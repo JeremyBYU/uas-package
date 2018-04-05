@@ -6,23 +6,10 @@ from uuid import uuid4
 import random
 from pprint import pprint as pp
 import simpy
-from simuas.helper import MonitoredStore, QueueCount
+from simuas.helper import MonitoredStore, QueueCount, condense
 
 
 from simuas.Util import Package, Battery, Uas, UasState, Point, Line, get_package_destination, get_package_weight, BAT_TO_DIST
-
-# Create a named tuples for Package, Batter, and UAS
-# This is like aclass but more lightweight and efficient
-# Package = namedtuple('Package', [
-#                      'uid', 'center_uid', 'count',  'uas_wait', 'delivery_wait', 'total_wait'])
-# Package.__new__.__defaults__ = (None,) * len(Package._fields)
-
-# Battery = namedtuple('Battery', ['charge'])
-# Battery.__new__.__defaults__ = (None,) * len(Battery._fields)
-
-# Uas = namedtuple('Uas', ['uid', 'center_uid', 'state', 'path'])
-# Uas.__new__.__defaults__ = (None,) * len(Uas._fields)
-
 
 DEMAND_SEED = 1
 BATTERY_SERVICE_SEED = 100
@@ -59,7 +46,7 @@ class PackageFacility(object):
     def __init__(self, env, uid, db, bounds, center, lambda_demand=1, mu_battery=80, battery_capacity=100, uas_capacity=15, uas_speed=7.5, replacement_time=2, safety_battery_level=20, demand_stop_time=MAX_SIM_TIME):
         self.env = env      # global simulation environment
         self.uid = uid      # unique identifying number of package facility
-        self.bounds = bounds  # bounding box of service
+        self.bounds = bounds  # bounding box of service TODO change to radius?
         # the center location of this package facility
         self.center = Point(center[0], center[1])
         self.bbox_center = [self.center.x - BBOX_PACKAGE_CENTER, self.center.y - BBOX_PACKAGE_CENTER,
@@ -99,13 +86,12 @@ class PackageFacility(object):
         env.process(self.demand_source())
         env.process(self.report_stats())
 
-
     def data_package(self):
         return {
-            'charging_stations': self.charging_stations.time_records,
-            'uas_queue': self.uas_queue.time_records,
-            'battery_bank': self.battery_bank._item_time_dict,
-            'uas_bank': self.uas_bank._item_time_dict,
+            'charging_stations': condense(self.charging_stations),
+            'uas_queue': condense(self.uas_queue),
+            'battery_bank': condense(self.battery_bank),
+            'uas_bank': condense(self.uas_bank),
             'packages': self.packages,
             'errors': self.errors
         }
@@ -208,7 +194,7 @@ class PackageFacility(object):
 
             # Deliver Package
             package.delivery_wait = self.env.now - uas.path_start_time
-            package.total_wait = self.env.now - package.start_time
+            package.total_wait = self.env.now - package.creation_time
             uas.package = None
             # Plan to next destination (back to home), remove old path
             uas.path = Line(package.destination, self.center)
@@ -256,18 +242,25 @@ class PackageFacility(object):
                         self.env.now, 'uas_collision', uas.uid, path['path_b_uid']))
 
     def check_path_time_collision(self, uas, path):
+        """Check for a possible collision with a UAS and the *possible* collision from the path variable
+        A collision is when two UAS are near eachother in SPACE and TIME
+        Arguments:
+            uas {[UAS]} -- The UAS that just planned a path
+            path {path_result} -- This is a result from a SQL query that says two lines (paths) intersect around a buffered radius
+        """
         uas_a = uas
-        uas_b = self.uas_set[path['path_b_uid']]
+        uas_b = self.uas_set[path['path_b_uid']]  # possibel offending UAS
 
+        # SPACE
         # These are sub lines of the respective uas paths that could have a collision
         uas_a_intersection = Line.from_wkt(path['a_geom'])
         uas_b_intersection = Line.from_wkt(path['b_geom'])
-
+        # TIME
+        # Determine at what time interval the UAS will be at these sections of possible collisions
         interval_a = self.time_bounds(uas_a, uas_a_intersection)
         interval_b = self.time_bounds(uas_b, uas_b_intersection)
 
         return interval_a[0] <= interval_b[1] and interval_b[0] <= interval_a[1]
-
 
     def time_bounds(self, uas, uas_intersection):
         # Get the beggining and ending lines

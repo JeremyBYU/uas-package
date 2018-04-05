@@ -8,24 +8,79 @@ from collections import defaultdict
 
 
 
+def condense(queue):
+    return {
+        'cumulative_item_rec': queue._cumulative_item_rec,
+        'cumulative_time_rec': queue._cumulative_time_rec,
+        'item_time_dict': queue._item_time_dict
+    }
+
 class QueueCount(object):
     def __init__(self, env, initial_count=0):
-        self.count = initial_count
-        self.env = env
-        self.last_time = env.now
-        self.time_records = {}
+        self._env = env
+        self.items = []
+        self._last_value = len(self.items)
+        self._cumulative_item_rec = []
+        self._cumulative_time_rec = []
+
+        self.reset_tracking()
+
+        # simpy.Store._do_put method override
     def add(self):
-        self.update_tracking(self.count + 1)
+        self.items.append(1)
+        self._update_tracking()
 
-    def update_tracking(self, new_count):
-        delta_t = self.env.now - self.last_time
-        self.time_records[self.count] = self.time_records.get(self.count, 0) + delta_t
-
-        self.count = new_count
-        self.last_time = self.env.now
-
+    # simpy.Store._do_get method override
     def remove(self):
-        self.update_tracking(self.count - 1)
+        if self.items:
+            self.items.pop(0)
+            self._update_tracking()
+
+    def reset_tracking(self):
+        self._last_reset = self._env.now
+        self._last_time = self._env.now
+        self._weighted_items = 0.0
+
+        self._item_rec = []
+        self._time_rec = []
+        self._item_time_dict = defaultdict(int)
+        self._item_time_dict[self._last_value] = 0
+        self._update_tracking()
+
+    def _update_tracking(self):
+        if self._env.now > self._last_time or len(self._item_rec) == 0:
+            time_delta = self._env.now - self._last_time
+            self._weighted_items += time_delta * float(self._last_value)
+            self._item_rec.append(self._last_value)
+            self._time_rec.append(time_delta)
+            self._item_time_dict[self._last_value] += time_delta
+        self._last_value = len(self.items)
+        self._last_time = self._env.now
+        if len(self._cumulative_item_rec) == 0:
+            self._cumulative_item_rec.append(self._last_value)
+            self._cumulative_time_rec.append(self._last_time)
+        else:
+            if self._last_time != self._cumulative_time_rec[-1]:
+                self._cumulative_item_rec.append(self._cumulative_item_rec[-1])
+                self._cumulative_time_rec.append(self._last_time)
+                self._cumulative_item_rec.append(self._last_value)
+                self._cumulative_time_rec.append(self._last_time)
+            else:
+                self._cumulative_item_rec.pop(-1)
+                self._cumulative_item_rec.append(self._last_value)
+
+    # def add(self):
+    #     self.update_tracking(self.count + 1)
+
+    # def update_tracking(self, new_count):
+    #     delta_t = self.env.now - self.last_time
+    #     self.time_records[self.count] = self.time_records.get(self.count, 0) + delta_t
+
+    #     self.count = new_count
+    #     self.last_time = self.env.now
+
+    # def remove(self):
+    #     self.update_tracking(self.count - 1)
 
 
 class MonitoredStore(simpy.Store):

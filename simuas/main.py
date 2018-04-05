@@ -9,7 +9,7 @@ from simuas.Database import Database
 
 
 MAX_SIM_TIME = 12 * 60
-N_REPLICATIONS = 30
+N_REPLICATIONS = 2
 
 OPTIONS = {
     'package_facilities_global': {

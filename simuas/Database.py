@@ -21,6 +21,14 @@ CREATE TABLE paths  (
 SELECT AddGeometryColumn('paths', 'geometry', 3857, 'LINESTRING', 'XY');
 """
 
+CREATE_TABLE_COLLISION = """
+CREATE TABLE paths_collision  (
+  a_uid TEXT NOT NULL,
+  b_uid TEXT NOT NULL);
+
+SELECT AddGeometryColumn('paths_collision', 'geometry', 3857, 'LINESTRING', 'XY');
+"""
+
 # LINE_STRING = "LINESTRING(:start_x :start_y, end_x end_y)"
 
 RADIUS_BUFFER = 5
@@ -28,6 +36,11 @@ RADIUS_BUFFER = 5
 ADD_PATH = """
 INSERT INTO paths(uid, status, geometry)
 VALUES(:uid, :status, GeomFromText(:wkt, 3857))
+"""
+
+ADD_COLLISION = """
+INSERT INTO paths_collision(a_uid, b_uid, geometry)
+VALUES(:a_uid, :b_uid, GeomFromText(:wkt, 3857))
 """
 
 INTERSECTION_PATH_SQL = """
@@ -41,7 +54,7 @@ SELECT b.uid as path_b_uid, ST_AsText(ST_Intersection(Buffer(a.geometry, :radius
 """
 
 
-CLEAR_PATHS = "DELETE FROM paths"
+CLEAR_PATHS = "DELETE FROM {}"
 
 REMOVE_PATH = "DELETE FROM paths WHERE uid = :uid"
 
@@ -62,16 +75,21 @@ def dict_factory(cursor, row):
 
 class Database(object):
     def __init__(self, db_path=DB_PATH, use_row=True):
-        self.conn = sqlite3.connect(db_path, check_same_thread=False,)
+        self.conn = sqlite3.connect(db_path, check_same_thread=True,)
         self.conn.enable_load_extension(True)
         self.conn.execute('SELECT load_extension("mod_spatialite")')
         self.conn.row_factory = sqlite3.Row if use_row else dict_factory
 
         if db_path == ':memory:':
             self.create_in_memory_db()
+        
+        # self.conn.executescript(CREATE_TABLE_COLLISION)
+        # self.conn.commit()
 
     def create_in_memory_db(self):
         self.conn.executescript(CREATE_TABLE)
+
+        self.conn.executescript(CREATE_TABLE_COLLISION)
         self.conn.commit()
     
     
@@ -89,10 +107,20 @@ class Database(object):
         query_params = {'uid': uas.uid, 'status': 'flight', 'wkt': path_line.to_wkt()}
         curs = self.conn.cursor()
         curs.execute(sql, query_params)
-
-    def clear_paths(self):
+        # self.conn.commit()
+    def insert_collision(self, a_uid, a_wkt, b_uid, b_wkt):
+        sql = ADD_COLLISION
+        query_params = {'a_uid': a_uid, 'b_uid': b_uid, 'wkt': a_wkt}
         curs = self.conn.cursor()
-        curs.execute(CLEAR_PATHS)
+        curs.execute(sql, query_params)
+
+        query_params = {'a_uid': a_uid, 'b_uid': b_uid, 'wkt': b_wkt}
+        curs.execute(sql, query_params)
+        self.conn.commit()
+
+    def clear_paths(self, table='paths'):
+        curs = self.conn.cursor()
+        curs.execute(CLEAR_PATHS.format(table))
 
     def remove_path(self, uid):
         curs = self.conn.cursor()

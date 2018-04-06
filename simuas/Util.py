@@ -1,5 +1,6 @@
 
 import random
+import math
 import re
 from enum import Enum
 import numpy as np
@@ -81,9 +82,21 @@ class Line(object):
             return None
 
 
-def get_package_destination(bounds):
-    point = random_package_point(bounds)
-    return point
+def get_package_destination(center, radius, rand_stream=RAND_PACKAGE):
+    """Gets a random point from a uniform disc around a package center
+    
+    Arguments:
+        center {Point} -- The center of the package center
+        radius {[type]} -- The max radius
+    
+    Keyword Arguments:
+        rand_stream {random_generator} -- random stream (default: {RAND_PACKAGE})
+    """
+    rand_r = rand_stream.uniform(0, 1)
+    rand_theta = rand_stream.uniform(0, 2 * math.pi)
+    x = center.x + radius * math.sqrt(rand_r) * math.cos(rand_theta)
+    y = center.y + radius * math.sqrt(rand_r) * math.sin(rand_theta)
+    return Point(x, y)
 
 
 def random_package_point(bounds):
@@ -92,10 +105,15 @@ def random_package_point(bounds):
     return Point(x_point, y_point)
 
 
-def get_package_weight():
+def get_package_weight(rand_stream=RAND_WEIGHT):
+    """Gets a package weight, between 1-3
+    
+    Keyword Arguments:
+        rand_stream {random_generator} -- The random stream(default: {RAND_WEIGHT})
+    """
     # print(MAX_WEIGHT)
     # import pdb
     # pdb.set_trace()
-    weight = RAND_WEIGHT.randint(1, MAX_WEIGHT + 1)
+    weight = rand_stream.randint(1, MAX_WEIGHT + 1)
     # print("Weight: ", weight)
     return weight

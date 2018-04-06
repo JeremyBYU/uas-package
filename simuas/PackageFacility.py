@@ -4,6 +4,7 @@ import sys
 import logging
 from uuid import uuid4
 import random
+import numpy as np
 from pprint import pprint as pp
 import simpy
 from simuas.helper import MonitoredStore, QueueCount, condense
@@ -13,6 +14,8 @@ from simuas.Util import Package, Battery, Uas, UasState, Point, Line, get_packag
 
 DEMAND_SEED = 1
 BATTERY_SERVICE_SEED = 100
+PACKAGE_DESTINATION_SEED = 10
+PACKAGE_WEIGHT_SEED = 12
 
 # Conversion from meters/sec to meters/min
 MS_TO_MM = 60
@@ -32,21 +35,24 @@ BBOX_PACKAGE_CENTER = 100
 def get_random_gen(seed):
     generator = RANDOM_GENERATORS.get(seed)
     if generator is None:
-        generator = random.Random()
+        generator = np.random.RandomState()
         generator.seed(seed)
         RANDOM_GENERATORS[seed] = generator
     return generator
 
+
+def create_info(time, info_type, value, other=''):
+    return {'time': time, 'info_type': info_type, 'value': value, 'other': other}
 
 def create_error(time, err_type, uas, other=''):
     return {'time': time, 'err_type': err_type, 'uas': uas, 'other': other}
 
 
 class PackageFacility(object):
-    def __init__(self, env, uid, db, bounds, center, lambda_demand=1, mu_battery=80, battery_capacity=100, uas_capacity=15, uas_speed=7.5, replacement_time=2, safety_battery_level=20, demand_stop_time=MAX_SIM_TIME):
+    def __init__(self, env, uid, db, radial_bounds, center, lambda_demand=1, mu_battery=80, battery_capacity=100, uas_capacity=15, uas_speed=7.5, replacement_time=2, safety_battery_level=20, demand_stop_time=MAX_SIM_TIME):
         self.env = env      # global simulation environment
         self.uid = uid      # unique identifying number of package facility
-        self.bounds = bounds  # bounding box of service TODO change to radius?
+        self.radial_bounds = radial_bounds
         # the center location of this package facility
         self.center = Point(center[0], center[1])
         self.bbox_center = [self.center.x - BBOX_PACKAGE_CENTER, self.center.y - BBOX_PACKAGE_CENTER,
@@ -76,12 +82,14 @@ class PackageFacility(object):
 
         # Create independent random streams
         self.demand_rand = get_random_gen(DEMAND_SEED * self.uid)
+        self.destination_rand = get_random_gen(PACKAGE_DESTINATION_SEED * self.uid)
 
         # Hash Table to hold events that *may* need to be canceled
         self.package_process = dict()
         # logging.debug(self.battery_bank.print_stats())
 
-        self.errors = []
+        self.info = []
+        # self.info = []s
 
         env.process(self.demand_source())
         env.process(self.report_stats())
@@ -93,7 +101,7 @@ class PackageFacility(object):
             'battery_bank': condense(self.battery_bank),
             'uas_bank': condense(self.uas_bank),
             'packages': self.packages,
-            'errors': self.errors
+            'info': self.info,
         }
 
     def report_stats(self, interval=10):
@@ -143,6 +151,7 @@ class PackageFacility(object):
 
     def charge_battery(self, battery: Battery):
         # Assume infinite charging stations, use the queue to keep track of how many are used at any given time
+        self.info.append(create_info(self.env.now, 'battery_before_charge', battery.charge))
         time_to_charge = (100-battery.charge) / 100 * self.mu_battery
         logging.debug(
             'Sim Time: %.2f. Beggining to charge battery (%s). From %.1f%% to 100%%. %.1f mins', self.env.now, battery.uid, battery.charge, time_to_charge)
@@ -219,7 +228,7 @@ class PackageFacility(object):
             if(uas.battery.charge < self.safety_battery_level):
                 logging.error('Sim Time: %.2f. UAS (%s) battery (%s) below safety level! Level %.1f',
                               self.env.now, uas.uid, uas.battery.uid, uas.battery.charge)
-                self.errors.append(create_error(
+                self.info.append(create_info(
                     self.env.now, 'battery_low', uas.uid, uas.battery.charge))
 
             logging.debug(
@@ -238,7 +247,7 @@ class PackageFacility(object):
                     # self.db.conn.commit()
                     logging.error('Sim Time: %.2f. UAS (%s) collides with UAS (%s)!',
                                   self.env.now, uas.uid, path['path_b_uid'])
-                    self.errors.append(create_error(
+                    self.info.append(create_info(
                         self.env.now, 'uas_collision', uas.uid, path['path_b_uid']))
 
     def check_path_time_collision(self, uas, path):
@@ -260,7 +269,12 @@ class PackageFacility(object):
         interval_a = self.time_bounds(uas_a, uas_a_intersection)
         interval_b = self.time_bounds(uas_b, uas_b_intersection)
 
-        return interval_a[0] <= interval_b[1] and interval_b[0] <= interval_a[1]
+        collision = interval_a[0] <= interval_b[1] and interval_b[0] <= interval_a[1]
+
+        if collision:
+            self.db.insert_collision(uas_a.uid, path['a_geom'], path['path_b_uid'], path['b_geom'] )
+
+        return collision
 
     def time_bounds(self, uas, uas_intersection):
         # Get the beggining and ending lines
@@ -296,8 +310,8 @@ class PackageFacility(object):
                               len(self.packages), self.env.now)
 
             # set the random destination and weight
-            package.destination = get_package_destination(self.bounds)
-            package.weight = get_package_weight()
+            package.destination = get_package_destination(self.center, self.radial_bounds, self.destination_rand)
+            package.weight = get_package_weight(self.destination_rand)
 
             logging.debug(
                 'Sim Time: %.2f. New package demand at %.2f. Package uid: %s', self.env.now, time, package.uid)
@@ -308,5 +322,5 @@ class PackageFacility(object):
             self.package_process[package.uid] = self.env.process(
                 package_handling_process)
             # Schedule next event
-            t = self.demand_rand.expovariate(1.0 / self.lambda_demand)
+            t = self.demand_rand.exponential(1.0 / self.lambda_demand)
             yield self.env.timeout(t)

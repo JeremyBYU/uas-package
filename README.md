@@ -8,22 +8,25 @@
 3. `pip install -r requirements.txt`
 
 
-## Run
+## How to Run
 
-`python -m simuas.main` OR `python -m simuas.main debug`
+You can run the code by entering `python -m simuas.main` OR `python -m simuas.main debug`.
 
 
-## Keywords
+## Simulation Details
+
+### Keywords
 
 * Package Center/Facility
     * A building where packages are located
     * The 'home' location for UAS
     * Has a repository of batteries, as well a charging stations where those batteries can be charged
 * UAS
-    * Has a battery, that decays over flight life
+    * Has a battery that decays over flight life
     * Carries packages
 
-## Important Resources
+
+### Important Resources
 
 * UAS
 * Batteries
@@ -44,4 +47,9 @@
   * `Util.py` and `helper.py` - Just utility and helper files.
 * `notebooks` - Holds Jupyter notebook that analyzes the data that was saved from the simulation. Makes charts and so forht
 * `requirements.txt` - holds all the modules required for running the simulation code.
+
+
+## Notebooks
+
+Please look at `notebooks/Simulation Analysis Final.html` and `notebooks/Paper Figures.html` to see figure and statistic calculations.
 

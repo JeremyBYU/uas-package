@@ -68,7 +68,10 @@
       "name": "Python: Module",
       "type": "python",
       "request": "launch",
-      "module": "simuas.main"
+      "module": "simuas.main",
+      "args": [
+        "debug"
+      ]
     },
     {
       "name": "Python: Pyramid",

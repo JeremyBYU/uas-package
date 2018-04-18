@@ -32,7 +32,7 @@ class UasState(Enum):
 # Create a mutable named tuples for Package, Batter, and UAS
 # This is like a class but more lightweight and efficient
 Package = recordclass('Package', [
-    'uid', 'center_uid', 'count', 'creation_time', 'destination',  'weight', 'start_time', 'uas_wait', 'delivery_wait', 'total_wait'])
+    'uid', 'center_uid', 'count', 'creation_time', 'destination',  'weight', 'start_time', 'uas_wait', 'delivery_wait', 'total_wait', 'travel_dist'])
 Package.__new__.__defaults__ = (None,) * len(Package._fields)
 
 
@@ -70,7 +70,7 @@ class Line(object):
     def __str__(self):
         self.__repr__()
 
-    def __repr__(self):
+    def __repr_hg_(self):
         return "({:.1f}, {:.1f}) -> ({:.1f}, {:.1f})".format(self.start.x, self.start.y, self.end.x, self.end.y)
 
     @staticmethod

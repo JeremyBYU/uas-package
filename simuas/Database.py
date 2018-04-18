@@ -101,10 +101,10 @@ class Database(object):
         curs.close()
         return rows
 
-    def insert_path(self, uas):
+    def insert_path(self, uas, status='flight'):
         sql = ADD_PATH
         path_line = uas.path
-        query_params = {'uid': uas.uid, 'status': 'flight', 'wkt': path_line.to_wkt()}
+        query_params = {'uid': uas.uid, 'status': status, 'wkt': path_line.to_wkt()}
         curs = self.conn.cursor()
         curs.execute(sql, query_params)
         # self.conn.commit()

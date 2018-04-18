@@ -9,7 +9,7 @@ from simuas.Database import Database
 
 
 MAX_SIM_TIME = 12 * 60
-N_REPLICATIONS = 5
+N_REPLICATIONS = 30
 
 OPTIONS = {
     'package_facilities_global': {
@@ -17,9 +17,16 @@ OPTIONS = {
     },
     'package_facilities': [
         {
-            'radial_bounds': 2500,
+            'lambda_demand': 1.28,
+            'radial_bounds': 2750,
             'center': [-8237051.3, 4971994.1],
-            'uas_capacity': 20
+            'uas_capacity': 17
+        },
+        {
+            'lambda_demand': 1.28,
+            'radial_bounds': 2750,
+            'center': [-8236999.70268, 4973094.16743],
+            'uas_capacity': 17
         }
     ]
 }
@@ -44,23 +51,6 @@ class UASSimulator(object):
             kw_dict.update(facility)
             self.pfs.append(PackageFacility(env, i+1, self.db, **kw_dict))
 
-    # def print_loc_stats(self, i):
-    #     pf = self.pfs[i]
-    #     battery_bank_capacity = pf.battery_bank.capacity
-    #     logging.info('Package Facility %s: Battery bank level - %.1f',
-    #                  i, battery_bank_capacity)
-
-    def run_stats(self):
-        print("\nSummary Stats:")
-        for i, pf in enumerate(self.pfs):
-            battery_bank_capacity = len(pf.battery_bank.items)
-            uas_bank_capacity = len(pf.uas_bank.items)
-            logging.info('Package Facility %s: Battery bank level - %.1f, UAS bank level - %.1f',
-                         i, battery_bank_capacity, uas_bank_capacity)
-            print("Battery Stats")
-            pf.battery_bank.print_stats()
-            print("UAS Stats")
-            pf.uas_bank.print_stats()
 
     def run(self):
         self.env.run(MAX_SIM_TIME)
@@ -87,7 +77,7 @@ def main():
         simulator.run()
         replications.append(simulator.data_pfs)
 
-    pickle.dump(replications, open("./data/repl_results.p", "wb"))
+    pickle.dump(replications, open("./data/repl_results_dual.p", "wb"))
     # simulator.db.conn.commit()
 
 

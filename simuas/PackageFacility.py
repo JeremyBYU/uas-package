@@ -32,6 +32,9 @@ MAX_SIM_TIME = 12 * 60
 BBOX_PACKAGE_CENTER = 100
 
 
+UAS_SET = {}
+
+
 def get_random_gen(seed):
     generator = RANDOM_GENERATORS.get(seed)
     if generator is None:
@@ -41,15 +44,22 @@ def get_random_gen(seed):
     return generator
 
 
-def create_info(time, info_type, value, other=''):
-    return {'time': time, 'info_type': info_type, 'value': value, 'other': other}
+def create_info(time, info_type, value, other='', other2=''):
+    return {'time': time, 'info_type': info_type, 'value': value, 'other': other, 'other2': other2 }
 
-def create_error(time, err_type, uas, other=''):
-    return {'time': time, 'err_type': err_type, 'uas': uas, 'other': other}
+
+def uid_time_hash(uid_a, uid_b, time):
+    if uid_a < uid_b:
+        return '{};{};{:.2f}'.format(uid_a, uid_b, time)
+    else:
+        return '{};{};{:.2f}'.format(uid_b, uid_a, time)
+
+# def create_error(time, err_type, uas, other=''):
+#     return {'time': time, 'err_type': err_type, 'uas': uas, 'other': other}
 
 
 class PackageFacility(object):
-    def __init__(self, env, uid, db, radial_bounds, center, lambda_demand=1, mu_battery=80, battery_capacity=100, uas_capacity=15, uas_speed=7.5, replacement_time=2, safety_battery_level=20, demand_stop_time=MAX_SIM_TIME):
+    def __init__(self, env, uid, db, radial_bounds, center, lambda_demand=1, mu_battery=80, battery_capacity=100, uas_capacity=15, uas_speed=7.5, replacement_time=1, safety_battery_level=20, demand_stop_time=MAX_SIM_TIME):
         self.env = env      # global simulation environment
         self.uid = uid      # unique identifying number of package facility
         self.radial_bounds = radial_bounds
@@ -77,7 +87,7 @@ class PackageFacility(object):
 
         # initialize our resources
         self.init_battery()
-        self.uas_set = {}
+        self.uas_set = UAS_SET
         env.process(self.init_uas())
 
         # Create independent random streams
@@ -184,7 +194,9 @@ class PackageFacility(object):
             uas.path = Line(self.center, package.destination)
             uas.path_start_time = self.env.now
             uas.state = 'flight_package'
-            self.db.insert_path(uas)
+            # extra data
+            package.travel_dist = uas.path.length
+            self.db.insert_path(uas, self.uid)
 
             # Check Collision
             self.check_collision(uas)
@@ -210,7 +222,7 @@ class PackageFacility(object):
             uas.path_start_time = self.env.now
             uas.state = 'flight_home'
             self.db.remove_path(uas.uid)
-            self.db.insert_path(uas)
+            self.db.insert_path(uas, self.uid)
 
             # Check Collision
             self.check_collision(uas)
@@ -242,13 +254,14 @@ class PackageFacility(object):
             uas.uid, self.bbox_center)
         if len(path_intersections) > 0:
             for path in path_intersections:
-                result = self.check_path_time_collision(uas, path)
+                result, averaged_time_stamp = self.check_path_time_collision(uas, path)
                 if result:
                     # self.db.conn.commit()
                     logging.error('Sim Time: %.2f. UAS (%s) collides with UAS (%s)!',
                                   self.env.now, uas.uid, path['path_b_uid'])
+                    uid_hash = uid_time_hash(uas.uid, path['path_b_uid'],  averaged_time_stamp)
                     self.info.append(create_info(
-                        self.env.now, 'uas_collision', uas.uid, path['path_b_uid']))
+                        averaged_time_stamp, 'uas_collision', uas.uid, path['path_b_uid'], other2=uid_hash))
 
     def check_path_time_collision(self, uas, path):
         """Check for a possible collision with a UAS and the *possible* collision from the path variable
@@ -270,11 +283,12 @@ class PackageFacility(object):
         interval_b = self.time_bounds(uas_b, uas_b_intersection)
 
         collision = interval_a[0] <= interval_b[1] and interval_b[0] <= interval_a[1]
-
+        averaged_time_stamp  = (interval_a[0] + interval_a[1] + interval_b[0] + interval_b[1]) / 4
         if collision:
+
             self.db.insert_collision(uas_a.uid, path['a_geom'], path['path_b_uid'], path['b_geom'] )
 
-        return collision
+        return collision, averaged_time_stamp
 
     def time_bounds(self, uas, uas_intersection):
         # Get the beggining and ending lines
@@ -314,7 +328,7 @@ class PackageFacility(object):
             package.weight = get_package_weight(self.destination_rand)
 
             logging.debug(
-                'Sim Time: %.2f. New package demand at %.2f. Package uid: %s', self.env.now, time, package.uid)
+                'Sim Time: %.2f. PC %d. New package demand at %.2f. Package uid: %s', self.env.now, self.uid,  time, package.uid)
             self.packages.append(package)
             # Launch new process independent of demand
             package_handling_process = self.handle_package(package)

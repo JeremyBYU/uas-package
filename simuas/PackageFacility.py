@@ -21,7 +21,7 @@ PACKAGE_WEIGHT_SEED = 12
 MS_TO_MM = 60
 
 
-# This holds are random number generators
+# This holds our random number generators
 # Needed when we do replications and dont want to reset the seed
 # on the next replication
 RANDOM_GENERATORS = {}
@@ -45,7 +45,7 @@ def get_random_gen(seed):
 
 
 def create_info(time, info_type, value, other='', other2=''):
-    return {'time': time, 'info_type': info_type, 'value': value, 'other': other, 'other2': other2 }
+    return {'time': time, 'info_type': info_type, 'value': value, 'other': other, 'other2': other2}
 
 
 def uid_time_hash(uid_a, uid_b, time):
@@ -53,9 +53,6 @@ def uid_time_hash(uid_a, uid_b, time):
         return '{};{};{:.2f}'.format(uid_a, uid_b, time)
     else:
         return '{};{};{:.2f}'.format(uid_b, uid_a, time)
-
-# def create_error(time, err_type, uas, other=''):
-#     return {'time': time, 'err_type': err_type, 'uas': uas, 'other': other}
 
 
 class PackageFacility(object):
@@ -92,12 +89,9 @@ class PackageFacility(object):
 
         # Create independent random streams
         self.demand_rand = get_random_gen(DEMAND_SEED * self.uid)
-        self.destination_rand = get_random_gen(PACKAGE_DESTINATION_SEED * self.uid)
-
-        # Hash Table to hold events that *may* need to be canceled
-        self.package_process = dict()
-        # logging.debug(self.battery_bank.print_stats())
-
+        self.destination_rand = get_random_gen(
+            PACKAGE_DESTINATION_SEED * self.uid)
+        # Holds any info we wish to record (collisions, low battery)
         self.info = []
         # self.info = []s
 
@@ -161,7 +155,8 @@ class PackageFacility(object):
 
     def charge_battery(self, battery: Battery):
         # Assume infinite charging stations, use the queue to keep track of how many are used at any given time
-        self.info.append(create_info(self.env.now, 'battery_before_charge', battery.charge))
+        self.info.append(create_info(
+            self.env.now, 'battery_before_charge', battery.charge))
         time_to_charge = (100-battery.charge) / 100 * self.mu_battery
         logging.debug(
             'Sim Time: %.2f. Beggining to charge battery (%s). From %.1f%% to 100%%. %.1f mins', self.env.now, battery.uid, battery.charge, time_to_charge)
@@ -254,12 +249,14 @@ class PackageFacility(object):
             uas.uid, self.bbox_center)
         if len(path_intersections) > 0:
             for path in path_intersections:
-                result, averaged_time_stamp = self.check_path_time_collision(uas, path)
+                result, averaged_time_stamp = self.check_path_time_collision(
+                    uas, path)
                 if result:
                     # self.db.conn.commit()
                     logging.error('Sim Time: %.2f. UAS (%s) collides with UAS (%s)!',
                                   self.env.now, uas.uid, path['path_b_uid'])
-                    uid_hash = uid_time_hash(uas.uid, path['path_b_uid'],  averaged_time_stamp)
+                    uid_hash = uid_time_hash(
+                        uas.uid, path['path_b_uid'],  averaged_time_stamp)
                     self.info.append(create_info(
                         averaged_time_stamp, 'uas_collision', uas.uid, path['path_b_uid'], other2=uid_hash))
 
@@ -283,10 +280,12 @@ class PackageFacility(object):
         interval_b = self.time_bounds(uas_b, uas_b_intersection)
 
         collision = interval_a[0] <= interval_b[1] and interval_b[0] <= interval_a[1]
-        averaged_time_stamp  = (interval_a[0] + interval_a[1] + interval_b[0] + interval_b[1]) / 4
+        averaged_time_stamp = (
+            interval_a[0] + interval_a[1] + interval_b[0] + interval_b[1]) / 4
         if collision:
 
-            self.db.insert_collision(uas_a.uid, path['a_geom'], path['path_b_uid'], path['b_geom'] )
+            self.db.insert_collision(
+                uas_a.uid, path['a_geom'], path['path_b_uid'], path['b_geom'])
 
         return collision, averaged_time_stamp
 
@@ -324,7 +323,8 @@ class PackageFacility(object):
                               len(self.packages), self.env.now)
 
             # set the random destination and weight
-            package.destination = get_package_destination(self.center, self.radial_bounds, self.destination_rand)
+            package.destination = get_package_destination(
+                self.center, self.radial_bounds, self.destination_rand)
             package.weight = get_package_weight(self.destination_rand)
 
             logging.debug(
@@ -333,8 +333,7 @@ class PackageFacility(object):
             # Launch new process independent of demand
             package_handling_process = self.handle_package(package)
             # record the process handler in case we need to cancel it later
-            self.package_process[package.uid] = self.env.process(
-                package_handling_process)
+            self.env.process(package_handling_process)
             # Schedule next event
             t = self.demand_rand.exponential(1.0 / self.lambda_demand)
             yield self.env.timeout(t)

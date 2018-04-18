@@ -53,9 +53,8 @@ class UASSimulator(object):
 
 
     def run(self):
-        self.env.run(MAX_SIM_TIME)
-        # self.data_pfs = [pacakge_facility.data_package()  for pacakge_facility in self.pfs]
-        self.data_pfs = [pf.data_package() for pf in self.pfs]
+        self.env.run(MAX_SIM_TIME) # stop at max simulation time
+        self.data_pfs = [pf.data_package() for pf in self.pfs] # create data package for each package center
         self.db.conn.commit()
         self.db.conn.close()
 
@@ -70,6 +69,7 @@ def main():
     else:
         logging.basicConfig(level=logging.WARN)
 
+    # Store replication data
     replications = []
     for i in range(N_REPLICATIONS):
         env = simpy.Environment()
@@ -78,7 +78,6 @@ def main():
         replications.append(simulator.data_pfs)
 
     pickle.dump(replications, open("./data/repl_results_dual.p", "wb"))
-    # simulator.db.conn.commit()
 
 
 if __name__ == '__main__':
